@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Switchboard — LAN relay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F2EFE6; --paper2:#EAE6D9; --card:#FAF8F1;
+    --ink:#1B1813; --ink-soft:#4E4A40; --muted:#8D8778;
+    --line:#D8D2C1; --line-strong:#BFB8A3;
+    --green:#1D9A55; --green-deep:#136B3C; --amber:#B26B14; --red:#B03A2E;
+    --serif:'Instrument Serif',Georgia,serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    height:100dvh; display:grid; grid-template-rows:1fr 30px;
+    background:var(--paper); color:var(--ink);
+    font-family:var(--mono); font-size:13.5px; overflow:hidden;
+  }
+  button{font-family:var(--mono); color:inherit}
+  ::selection{background:var(--ink); color:var(--paper)}
+  :focus-visible{outline:2px solid var(--green); outline-offset:2px}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:var(--line-strong); border:3px solid transparent; background-clip:content-box; border-radius:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ---------- LEDs & tags ---------- */
+  .led{width:9px;height:9px;border-radius:2px;flex:none}
+  .led.big{width:11px;height:11px}
+  .led.onl{background:var(--green); animation:pulse 2.4s infinite}
+  .led.offl{background:transparent; border:1.5px solid var(--amber)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(29,154,85,.45)} 70%{box-shadow:0 0 0 6px rgba(29,154,85,0)} 100%{box-shadow:0 0 0 0 rgba(29,154,85,0)}}
+  .tag{border:1px solid var(--line-strong); color:var(--ink-soft); border-radius:2px; padding:3px 7px; font-size:9px; letter-spacing:.12em; white-space:nowrap}
+  .tag.live{color:var(--green-deep); border-color:rgba(19,107,60,.5)}
+  .tag.demo{color:var(--amber); border-color:rgba(178,107,20,.5)}
+
+  /* ---------- App frame ---------- */
+  #app{display:grid; grid-template-columns:312px 1fr; min-height:0}
+
+  /* ---------- Sidebar ---------- */
+  #side{border-right:1px solid var(--line); background:var(--paper2); display:flex; flex-direction:column; min-height:0}
+  #brand{display:flex; gap:12px; align-items:center; padding:16px 18px 14px; border-bottom:1px solid var(--line)}
+  #brand h1{font:italic 400 23px var(--serif); line-height:1}
+  #brand p{margin-top:4px; font-size:8.5px; letter-spacing:.16em; color:var(--muted)}
+  #meCard{margin:14px 14px 0; padding:10px 12px; background:var(--card); border:1px solid var(--line-strong); border-radius:3px;
+    display:grid; grid-template-columns:auto 1fr auto; gap:4px 12px; align-items:center}
+  .meInfo{display:flex; flex-direction:column; gap:2px; min-width:0}
+  #meName{display:inline-flex; align-items:center; gap:6px; background:none; border:none; padding:0; font-weight:600; font-size:13px; cursor:pointer; text-align:left}
+  #meName svg{opacity:.4; transition:opacity .15s}
+  #meName:hover svg{opacity:1}
+  .rename-input{font:600 13px var(--mono); background:var(--paper); border:1px solid var(--ink); border-radius:2px; padding:2px 6px; width:140px; color:var(--ink); outline:none}
+  #meIp{font-size:10px; color:var(--muted); letter-spacing:.06em}
+  #rosterHead{display:flex; justify-content:space-between; align-items:center; padding:16px 18px 8px; font-size:9.5px; letter-spacing:.16em; color:var(--ink-soft)}
+  .rhLabel{display:inline-flex; gap:8px; align-items:center}
+  #onlineCount{color:var(--muted)}
+  #roster{flex:1; overflow-y:auto; padding:2px 10px 14px; display:flex; flex-direction:column; gap:2px}
+  .scanline{padding:18px 10px; color:var(--muted); font-size:11px; letter-spacing:.08em}
+  .cur{display:inline-block; width:7px; height:12px; background:var(--muted); margin-left:6px; vertical-align:-2px; animation:blink 1.1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  .peer{appearance:none; text-align:left; background:transparent; border:1px solid transparent; border-radius:3px;
+    padding:9px 10px; display:grid; grid-template-columns:12px 1fr auto; gap:4px 10px; align-items:center; cursor:pointer; transition:background .12s,border-color .12s}
+  .peer:hover{background:var(--card); border-color:var(--line)}
+  .pbody{min-width:0; display:flex; flex-direction:column; gap:3px}
+  .prow1,.prow2{display:flex; justify-content:space-between; gap:8px; min-width:0}
+  .pname{font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .ptime{font-size:9.5px; color:var(--muted); flex:none}
+  .pip{font-size:10.5px; color:var(--muted); flex:none}
+  .pprev{font-size:10.5px; color:var(--muted); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .pbadge{min-width:17px; height:17px; padding:0 4px; background:var(--ink); color:var(--paper); font-size:10px; font-weight:700; display:grid; place-items:center; border-radius:2px}
+  .peer.dead .pname{color:var(--muted); font-weight:500}
+  .peer.sel{background:var(--ink); border-color:var(--ink)}
+  .peer.sel .pname,.peer.sel .ptime{color:var(--paper)}
+  .peer.sel .pip,.peer.sel .pprev{color:rgba(242,239,230,.6)}
+  .peer.sel .pbadge{background:var(--paper); color:var(--ink)}
+
+  /* ---------- Main ---------- */
+  #main{min-width:0; display:flex; flex-direction:column; background:var(--paper)}
+  #mapView{position:relative; flex:1; min-height:0;
+    background-image:radial-gradient(rgba(27,24,19,.13) 1px, transparent 1.2px); background-size:24px 24px; background-position:center}
+  #netmap{position:absolute; inset:0; width:100%; height:100%; display:block}
+  #mapCap{position:absolute; top:30px; left:34px; max-width:60%; pointer-events:none}
+  #mapCap .over{font-size:10px; letter-spacing:.18em; color:var(--muted)}
+  #mapCap h2{font:400 40px/1.08 var(--serif); margin:10px 0 12px}
+  #mapCap h2 em{font-style:italic}
+  #mapCap .hint{font-size:10px; letter-spacing:.14em; color:var(--ink-soft)}
+  #chatView{flex:1; min-height:0; display:flex; flex-direction:column}
+  #chatView[hidden]{display:none}
+  #chatHead{display:flex; align-items:center; gap:14px; padding:13px 24px; border-bottom:1px solid var(--line)}
+  .chInfo{display:flex; flex-direction:column; gap:2px; min-width:0}
+  #chOver{font-size:9px; letter-spacing:.14em; color:var(--muted)}
+  #chName{font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  #chStatus{margin-left:auto; font-size:10px; letter-spacing:.14em}
+  #chStatus.ok{color:var(--green-deep)} #chStatus.warn{color:var(--amber)}
+  .btnMini{display:inline-flex; gap:7px; align-items:center; background:none; border:1px solid var(--line-strong); color:var(--ink-soft);
+    padding:7px 11px; border-radius:3px; font-size:10px; font-weight:500; letter-spacing:.12em; cursor:pointer; transition:all .15s}
+  .btnMini:hover{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+
+  #stream{flex:1; overflow-y:auto; padding:26px 26px 10px}
+  #msgs{list-style:none; max-width:740px; margin:0 auto; display:flex; flex-direction:column; gap:10px}
+  .m{max-width:76%; display:flex; flex-direction:column; gap:3px}
+  .m.theirs{align-self:flex-start}
+  .m.mine{align-self:flex-end; align-items:flex-end}
+  .m.cont{margin-top:-7px}
+  .mname{font-size:10px; font-weight:600; letter-spacing:.1em; color:var(--ink-soft); margin-left:2px}
+  .mbub{padding:9px 12px; border-radius:3px; font-size:13.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere}
+  .theirs .mbub{background:var(--card); border:1px solid var(--line)}
+  .mine .mbub{background:var(--ink); color:var(--paper); border:1px solid var(--ink)}
+  .mmeta{display:flex; gap:8px; font-size:9.5px; color:var(--muted); letter-spacing:.06em}
+  .st-delivered{color:var(--green-deep)} .st-failed{color:var(--red)} .st-sending{color:var(--muted)}
+  .retry{background:none; border:none; padding:0; color:var(--red); font-size:9.5px; font-weight:600; letter-spacing:.1em; cursor:pointer; text-decoration:underline dotted}
+  .sys{align-self:center; text-align:center; font-size:9.5px; letter-spacing:.14em; color:var(--muted); padding:4px 0; text-transform:uppercase}
+  .m.fresh{animation:rise .18s ease-out}
+  @keyframes rise{from{opacity:0; transform:translateY(6px)}}
+
+  #offBar{display:none; width:min(740px,calc(100% - 52px)); margin:0 auto; align-items:center; gap:9px;
+    color:var(--amber); font-size:10px; letter-spacing:.1em; padding-top:9px}
+  #offBar.show{display:flex}
+  #offBar::before{content:''; width:7px; height:7px; background:var(--amber); flex:none}
+  #typingRow{display:none; width:min(740px,calc(100% - 52px)); margin:0 auto; align-items:center; gap:9px;
+    padding:9px 0 0; font-size:9.5px; letter-spacing:.14em; color:var(--ink-soft)}
+  #typingRow.show{display:flex}
+  #typingRow b{font-weight:600}
+  .tdots{display:inline-flex; gap:3px}
+  .tdots i{width:4px; height:4px; background:var(--ink-soft); animation:tdot 1.1s infinite}
+  .tdots i:nth-child(2){animation-delay:.15s} .tdots i:nth-child(3){animation-delay:.3s}
+  @keyframes tdot{0%,60%,100%{opacity:.2} 30%{opacity:1}}
+
+  #composer{border-top:1px solid var(--line); padding:12px 26px}
+  #comWrap{max-width:740px; margin:0 auto; display:flex; gap:10px; align-items:flex-end}
+  #ta{flex:1; min-width:0; background:var(--card); border:1px solid var(--line-strong); border-radius:3px;
+    padding:11px 12px; font:13.5px/1.5 var(--mono); color:var(--ink); resize:none; height:42px; transition:border-color .15s}
+  #ta::placeholder{color:var(--muted)}
+  #ta:focus{outline:none; border-color:var(--ink)}
+  #sendBtn{width:42px; height:42px; flex:none; background:var(--ink); color:var(--paper); border:none; border-radius:3px;
+    display:grid; place-items:center; cursor:pointer; transition:background .15s}
+  #sendBtn:hover{background:#000}
+  #sendBtn:active{transform:scale(.96)}
+  #comHint{max-width:740px; margin:7px auto 0; display:flex; justify-content:space-between; font-size:9px; letter-spacing:.12em; color:var(--muted)}
+
+  /* ---------- Status bar ---------- */
+  #statusbar{display:flex; align-items:center; gap:14px; padding:0 14px; border-top:1px solid var(--line);
+    background:var(--paper2); font-size:9.5px; letter-spacing:.1em; color:var(--ink-soft)}
+  .sbRight{margin-left:auto; display:flex; align-items:center; gap:16px}
+  #btnSound{background:none; border:none; cursor:pointer; color:var(--ink-soft); display:grid; place-items:center; padding:2px}
+  #btnSound:hover{color:var(--ink)}
+
+  /* ---------- Toasts ---------- */
+  #toasts{position:fixed; right:16px; bottom:44px; z-index:60; display:flex; flex-direction:column; gap:8px}
+  .toast{background:var(--card); border:1px solid var(--line-strong); border-left:3px solid var(--green-deep);
+    border-radius:3px; padding:9px 13px; min-width:230px; max-width:310px; cursor:pointer;
+    display:flex; flex-direction:column; gap:2px; box-shadow:0 6px 18px rgba(27,24,19,.12);
+    animation:tin .22s ease-out; transition:opacity .24s, transform .24s}
+  .toast b{font-size:9.5px; letter-spacing:.14em}
+  .toast span{font-size:10.5px; color:var(--ink-soft)}
+  .toast.warn{border-left-color:var(--amber)} .toast.err{border-left-color:var(--red)}
+  .toast.bye{opacity:0; transform:translateX(10px)}
+  @keyframes tin{from{opacity:0; transform:translateX(10px)}}
+
+  /* ---------- Boot ---------- */
+  #boot{position:fixed; inset:0; z-index:100; background:var(--paper); display:grid; place-items:center; transition:opacity .45s}
+  #boot.gone{opacity:0; pointer-events:none}
+  .bootBox{width:min(470px,92vw); text-align:center; padding:20px}
+  .bootMark{color:var(--ink)}
+  #bootHead{font:italic 400 46px var(--serif); margin:12px 0 6px}
+  .bootSub{font-size:9.5px; letter-spacing:.18em; color:var(--muted)}
+  .scan{position:relative; height:2px; background:var(--line); margin:30px 60px 0}
+  .scan i{position:absolute; top:-2px; left:0; width:34px; height:6px; background:var(--ink); animation:sweep 1.3s cubic-bezier(.5,0,.5,1) infinite alternate}
+  @keyframes sweep{to{left:calc(100% - 34px)}}
+  #bootStatus{margin-top:16px; font-size:10px; letter-spacing:.16em; color:var(--ink-soft); min-height:14px}
+  #bootChoose{margin-top:24px; display:flex; flex-direction:column; gap:10px}
+  .btn{font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; cursor:pointer; border-radius:3px; padding:11px 14px; transition:all .15s}
+  .bootBox .btn{width:100%}
+  .btnGhost{background:transparent; border:1px solid var(--ink); color:var(--ink)}
+  .btnGhost:hover{background:var(--ink); color:var(--paper)}
+  .btnSolid{background:var(--ink); border:1px solid var(--ink); color:var(--paper)}
+  .btnSolid:hover{background:#000}
+  .orRule{display:flex; align-items:center; gap:10px; color:var(--muted); font-size:9px; letter-spacing:.2em; margin:2px 0}
+  .orRule i{flex:1; height:1px; background:var(--line)}
+  .addrRow{display:flex}
+  .addrPre{border:1px solid var(--line-strong); border-right:none; border-radius:3px 0 0 3px; padding:10px 0 10px 12px; font-size:11.5px; color:var(--muted); background:var(--card)}
+  #addrInput{flex:1; min-width:0; border:1px solid var(--line-strong); border-radius:0 3px 3px 0; padding:10px 12px 10px 4px;
+    font:12.5px var(--mono); background:var(--card); color:var(--ink); outline:none}
+  #addrInput:focus{border-color:var(--ink)}
+  .shake{animation:shake .35s}
+  @keyframes shake{20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
+  .bootNote{margin-top:14px; padding-top:14px; border-top:1px dashed var(--line-strong); font-size:10.5px; line-height:1.75; color:var(--muted); text-align:left}
+  .bootNote b{color:var(--ink-soft)}
+  .bootNote code{background:var(--card); border:1px solid var(--line); border-radius:2px; padding:1px 5px; font-size:10px; color:var(--ink)}
+
+  @media (max-width:760px){
+    #app{grid-template-columns:236px 1fr}
+    .pprev{display:none}
+    #mapCap h2{font-size:30px}
+    #stream{padding:18px 16px 8px}
+    #chatHead{padding:12px 16px}
+    #composer{padding:10px 16px}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="side">
+    <header id="brand">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none"/>
+        <rect x="18" y="2.5" width="4.5" height="4.5"/><rect x="1.5" y="2.5" width="4.5" height="4.5"/>
+        <rect x="18" y="17" width="4.5" height="4.5"/><rect x="1.5" y="17" width="4.5" height="4.5"/>
+        <path d="M9 10.5 6 5M15 10.5 18 5M9 13.5 6 19M15 13.5l3 5.5"/>
+      </svg>
+      <div><h1>Switchboard</h1><p>LOCAL NETWORK RELAY · v1.0</p></div>
+    </header>
+
+    <div id="meCard">
+      <span class="led big offl" id="meLed"></span>
+      <div class="meInfo">
+        <button id="meName" type="button" title="Click to rename this machine">
+          <span>—</span>
+          <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 13l.8-3L11 2.8a1.5 1.5 0 0 1 2.2 2.2L6 12.2 3 13z"/></svg>
+        </button>
+        <span id="meIp">—</span>
+      </div>
+      <span id="meTag" class="tag">STANDBY</span>
+    </div>
+
+    <div id="rosterHead">
+      <span class="rhLabel">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+          <rect x="1.5" y="6" width="4" height="4"/><rect x="10.5" y="1.5" width="4" height="4"/><rect x="10.5" y="10.5" width="4" height="4"/>
+          <path d="M5.5 8H8M8 3.5v9M8 3.5h2.5M8 12.5h2.5"/>
+        </svg>
+        LINES
+      </span>
+      <span id="onlineCount">0 ACTIVE</span>
+    </div>
+    <div id="roster"></div>
+  </aside>
+
+  <main id="main">
+    <section id="mapView">
+      <canvas id="netmap"></canvas>
+      <div id="mapCap">
+        <p class="over">NETWORK MAP</p>
+        <h2>Open a line to<br><em>start talking.</em></h2>
+        <p class="hint">PICK A MACHINE ON THE BOARD — OR CLICK A NODE</p>
+      </div>
+    </section>
+
+    <section id="chatView" hidden>
+      <header id="chatHead">
+        <span class="led big onl" id="chLed"></span>
+        <div class="chInfo"><span id="chOver">LINE · —</span><strong id="chName">—</strong></div>
+        <span id="chStatus" class="ok">ONLINE</span>
+        <button id="closeBtn" class="btnMini" type="button">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+            <rect x="1.5" y="6" width="4" height="4"/><rect x="10.5" y="1.5" width="4" height="4"/><rect x="10.5" y="10.5" width="4" height="4"/>
+            <path d="M5.5 8H8M8 3.5v9M8 3.5h2.5M8 12.5h2.5"/>
+          </svg>
+          MAP
+        </button>
+      </header>
+
+      <div id="stream"><ol id="msgs" aria-live="polite"></ol></div>
+
+      <div id="offBar">HOST OFFLINE — DELIVERY WILL FAIL UNTIL IT RETURNS</div>
+      <div id="typingRow"><span class="tdots"><i></i><i></i><i></i></span><b id="typingWho"></b></div>
+
+      <footer id="composer">
+        <div id="comWrap">
+          <textarea id="ta" rows="1" maxlength="2000" placeholder="Transmit…"></textarea>
+          <button id="sendBtn" type="button" title="Send" aria-label="Send">
+            <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 8h10M8.5 4l4 4-4 4"/></svg>
+          </button>
+        </div>
+        <div id="comHint"><span>ENTER SENDS · SHIFT+ENTER NEWLINE</span><span id="hintCount"></span></div>
+      </footer>
+    </section>
+  </main>
+</div>
+
+<footer id="statusbar">
+  <span id="sbMode" class="tag">STANDBY</span>
+  <span class="sbRight">
+    <span id="sbNodes">NODES —</span>
+    <span id="sbIp"></span>
+    <span id="sbClock"></span>
+    <button id="btnSound" type="button" title="Toggle sound"></button>
+  </span>
+</footer>
+
+<div id="toasts"></div>
+
+<div id="boot">
+  <div class="bootBox">
+    <svg class="bootMark" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+      <rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none"/>
+      <rect x="18" y="2.5" width="4.5" height="4.5"/><rect x="1.5" y="2.5" width="4.5" height="4.5"/>
+      <rect x="18" y="17" width="4.5" height="4.5"/><rect x="1.5" y="17" width="4.5" height="4.5"/>
+      <path d="M9 10.5 6 5M15 10.5 18 5M9 13.5 6 19M15 13.5l3 5.5"/>
+    </svg>
+    <h1 id="bootHead">Switchboard</h1>
+    <p class="bootSub">LOCAL NETWORK RELAY — DIRECT MACHINE-TO-MACHINE MESSAGING</p>
+    <div class="scan"><i></i></div>
+    <p id="bootStatus">INITIALIZING…</p>
+    <div id="bootChoose" hidden>
+      <button id="btnReconnect" class="btn btnSolid" type="button" hidden>RECONNECT</button>
+      <button id="btnDemo" class="btn btnGhost" type="button">ENTER DEMO MODE</button>
+      <div class="orRule"><i></i><span>OR</span><i></i></div>
+      <div class="addrRow"><span class="addrPre">ws://</span><input id="addrInput" placeholder="192.168.1.10:3000" spellcheck="false"></div>
+      <button id="btnConnect" class="btn btnSolid" type="button">CONNECT TO SERVER</button>
+      <p class="bootNote"><b>Demo mode</b> turns every tab of this page into its own “machine” on a shared channel — open two tabs side by side to watch discovery, presence and delivery happen live. For true cross-computer chat on your LAN, run the bundled <b>server.js</b> on one machine (<code>npm i ws &amp;&amp; node server.js</code>), then open <code>http://&lt;that-machine-ip&gt;:3000</code> on every computer — or point the field above at it.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s);
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+const pad = n => String(n).padStart(2, '0');
+const hms = ts => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const hm = ts => hms(ts).slice(0, 5);
+const uid = () => Math.random().toString(36).slice(2, 10);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+const store = {
+  get name() { return localStorage.getItem('sb_name') || ''; },
+  set name(v) { localStorage.setItem('sb_name', v); },
+  get addr() { return localStorage.getItem('sb_addr') || ''; },
+  set addr(v) { localStorage.setItem('sb_addr', v); },
+  get muted() { return localStorage.getItem('sb_muted') === '1'; },
+  set muted(v) { localStorage.setItem('sb_muted', v ? '1' : '0'); },
+};
+
+/* ================= state ================= */
+const S = {
+  me: null, mode: null, bootId: null, rtt: null,
+  peers: new Map(),   // id -> {id,name,ip,online,lastTs,unread,_ph}
+  chats: new Map(),   // id -> [{from:'me'|'them',text,ts,status} | {sys,text,ts}]
+  active: null,
+  typing: new Map(),  // id -> timeout
+  transport: null,
+};
+const myChat = id => { if (!S.chats.has(id)) S.chats.set(id, []); return S.chats.get(id); };
+const sysMsg = text => ({ sys: true, text, ts: Date.now() });
+
+/* ================= toast ================= */
+const toastBox = $('#toasts');
+function toast(title, body, kind = 'ok') {
+  const t = el('div', `toast ${kind}`);
+  t.appendChild(el('b', null, title));
+  if (body) t.appendChild(el('span', null, body));
+  const kill = () => { t.classList.add('bye'); setTimeout(() => t.remove(), 240); };
+  t.addEventListener('click', kill);
+  toastBox.appendChild(t);
+  setTimeout(kill, 3800);
+}
+
+/* ================= tiny synth blips ================= */
+const Sfx = {
+  ac: null,
+  ensure() { try { if (!this.ac) this.ac = new (window.AudioContext || window.webkitAudioContext)(); if (this.ac.state === 'suspended') this.ac.resume(); } catch {} },
+  blip(f = 1200, dur = .06) {
+    if (store.muted) return;
+    try {
+      this.ensure(); if (!this.ac || this.ac.state !== 'running') return;
+      const t = this.ac.currentTime, o = this.ac.createOscillator(), g = this.ac.createGain();
+      o.type = 'square'; o.frequency.value = f;
+      g.gain.setValueAtTime(.035, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(this.ac.destination); o.start(t); o.stop(t + dur + .01);
+    } catch {}
+  },
+  send() { this.blip(1500); },
+  recv() { this.blip(880, .07); },
+  fail() { this.blip(300, .09); setTimeout(() => this.blip(240, .11), 110); },
+};
+document.addEventListener('pointerdown', () => Sfx.ensure());
+document.addEventListener('keydown', () => Sfx.ensure());
+
+const SVG = {
+  speaker: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 6h2.5L8 3v10L4.5 10H2z" fill="currentColor" stroke="none"/><path d="M10.5 5.5a3.4 3.4 0 0 1 0 5M12.5 3.8a6 6 0 0 1 0 8.4"/></svg>',
+  speakerOff: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 6h2.5L8 3v10L4.5 10H2z" fill="currentColor" stroke="none"/><path d="M10.5 6l4 4M14.5 6l-4 4"/></svg>',
+};
+const btnSound = $('#btnSound');
+function renderSound() { btnSound.innerHTML = store.muted ? SVG.speakerOff : SVG.speaker; }
+btnSound.addEventListener('click', () => { store.muted = !store.muted; renderSound(); if (!store.muted) Sfx.blip(1200); });
+
+/* ================= DOM refs ================= */
+const rosterEl = $('#roster'), onlineCountEl = $('#onlineCount');
+const mapView = $('#mapView'), chatView = $('#chatView');
+const msgsEl = $('#msgs'), streamEl = $('#stream');
+const chLed = $('#chLed'), chOver = $('#chOver'), chName = $('#chName'), chStatus = $('#chStatus');
+const taEl = $('#ta'), sendBtn = $('#sendBtn'), hintCount = $('#hintCount'), offBar = $('#offBar'), typingRow = $('#typingRow'), typingWho = $('#typingWho');
+const meNameBtn = $('#meName'), meIpEl = $('#meIp'), meTag = $('#meTag'), meLed = $('#meLed');
+
+/* ================= presence ================= */
+function upsertPeer(p, { quiet = false } = {}) {
+  const known = S.peers.get(p.id);
+  const ev = !known ? 'new' : (known.online ? 'upd' : 'back');
+  const renamed = known && known.name !== p.name;
+  S.peers.set(p.id, {
+    id: p.id, name: p.name, ip: p.ip, online: true, lastTs: Date.now(),
+    unread: known ? known.unread || 0 : 0,
+    _ph: known ? known._ph : Math.random() * 6.28,
+  });
+  if (!quiet && ev !== 'upd') { toast(ev === 'new' ? 'NODE JOINED' : 'NODE BACK ONLINE', `${p.name} · ${p.ip}`); Sfx.blip(1250, .05); }
+  if (renamed && S.active === p.id) renderChatHead();
+  return ev;
+}
+function dropPeer(id, reason = 'left') {
+  const p = S.peers.get(id);
+  if (!p || !p.online) return;
+  p.online = false; p.lastTs = Date.now();
+  clearTyping(id);
+  toast('NODE LOST', `${p.name} · ${p.ip}`, 'warn');
+  const chat = S.chats.get(id);
+  if (chat && chat.some(m => !m.sys)) {
+    const m = sysMsg(reason === 'left' ? `HOST ${p.ip} LEFT THE NETWORK` : `CONNECTION TO ${p.ip} TIMED OUT`);
+    addMessage(id, m);
+  }
+  if (S.active === id) renderChatHead();
+  renderRoster();
+}
+
+/* ================= roster ================= */
+function rosterList() {
+  return [...S.peers.values()].sort((a, b) =>
+    (b.online - a.online) || a.name.localeCompare(b.name) || a.ip.localeCompare(b.ip));
+}
+function lastOf(id) {
+  const c = S.chats.get(id);
+  if (!c) return null;   // ← the fix: no chat history yet
+  for (let i = c.length - 1; i >= 0; i--) if (!c[i].sys) return c[i];
+  return null;
+}
+function renderRoster() {
+  const list = rosterList();
+  onlineCountEl.textContent = `${list.filter(p => p.online).length} ACTIVE`;
+  rosterEl.textContent = '';
+  if (!list.length) {
+    const row = el('div', 'scanline', 'SCANNING FOR MACHINES…');
+    row.appendChild(el('i', 'cur'));
+    rosterEl.appendChild(row);
+  } else {
+    for (const p of list) {
+      const b = el('button', `peer${p.online ? '' : ' dead'}${S.active === p.id ? ' sel' : ''}`);
+      b.type = 'button'; b.dataset.id = p.id;
+      b.appendChild(el('span', `led ${p.online ? 'onl' : 'offl'}`));
+      const body = el('span', 'pbody');
+      const r1 = el('span', 'prow1');
+      r1.appendChild(el('span', 'pname', p.name));
+      const last = lastOf(p.id);
+      r1.appendChild(el('span', 'ptime', last ? hm(last.ts) : ''));
+      const r2 = el('span', 'prow2');
+      r2.appendChild(el('span', 'pip', p.ip));
+      r2.appendChild(el('span', 'pprev',
+        last ? (last.from === 'me' ? 'YOU: ' : '') + last.text
+             : (p.online ? 'LINE READY' : 'LAST SEEN ' + hm(p.lastTs || Date.now()))));
+      body.append(r1, r2);
+      b.appendChild(body);
+      if (p.unread) b.appendChild(el('span', 'pbadge', String(p.unread)));
+      b.addEventListener('click', () => selectPeer(p.id));
+      rosterEl.appendChild(b);
+    }
+  }
+  renderStatusbar();
+  map.sync();
+}
+
+/* ================= me card / rename ================= */
+function renderMe() {
+  if (S.me) meNameBtn.querySelector('span').textContent = S.me.name;
+  meIpEl.textContent = S.me ? (S.me.ip || '—') : '—';
+  meTag.textContent = S.mode === 'live' ? 'WS · LIVE' : S.mode === 'demo' ? 'DEMO' : 'STANDBY';
+  meTag.className = `tag ${S.mode === 'live' ? 'live' : S.mode === 'demo' ? 'demo' : ''}`;
+  meLed.className = `led big ${S.mode ? 'onl' : 'offl'}`;
+}
+let renaming = false;
+meNameBtn.addEventListener('click', () => {
+  if (renaming || !S.me) return;
+  renaming = true;
+  const span = meNameBtn.querySelector('span');
+  const input = el('input', 'rename-input');
+  input.maxLength = 24; input.value = S.me.name;
+  span.style.display = 'none'; meNameBtn.appendChild(input);
+  input.focus(); input.select();
+  let closed = false;
+  const done = ok => {
+    if (closed) return; closed = true; renaming = false;
+    if (ok) {
+      const v = input.value.trim();
+      if (v && v !== S.me.name) { S.me.name = v; if (S.transport && S.transport.rename) S.transport.rename(v); toast('CALLSIGN SET', v); }
+    }
+    input.remove(); span.style.display = ''; span.textContent = S.me.name;
+    renderMe(); renderRoster();
+  };
+  input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') done(true); else if (e.key === 'Escape') done(false); });
+  input.addEventListener('blur', () => done(true));
+  input.addEventListener('click', e => e.stopPropagation());
+});
+
+/* ================= chat view ================= */
+function renderChatHead() {
+  const p = S.peers.get(S.active); if (!p) return;
+  chLed.className = `led big ${p.online ? 'onl' : 'offl'}`;
+  chOver.textContent = `LINE · ${p.ip}`;
+  chName.textContent = p.name;
+  chStatus.textContent = p.online ? 'ONLINE' : 'OFFLINE';
+  chStatus.className = p.online ? 'ok' : 'warn';
+  offBar.classList.toggle('show', !p.online);
+  taEl.placeholder = `Transmit to ${p.ip} …`;
+}
+function atBottom() { return streamEl.scrollHeight - streamEl.scrollTop - streamEl.clientHeight < 60; }
+function scrollBottom(force) { if (force || atBottom()) streamEl.scrollTop = streamEl.scrollHeight; }
+
+function peerName(id) { const p = S.peers.get(id); return p ? p.name : 'HOST'; }
+function paintMeta(meta, m) {
+  meta.textContent = '';
+  meta.appendChild(el('span', null, hms(m.ts)));
+  meta.appendChild(el('span', `st-${m.status}`, { sending: 'SENDING…', delivered: 'DELIVERED', failed: 'FAILED' }[m.status]));
+  if (m.status === 'failed') {
+    const b = el('button', 'retry', 'RETRY');
+    b.type = 'button';
+    b.addEventListener('click', () => retry(m.ts));
+    meta.appendChild(b);
+  }
+}
+function msgNode(m, prev) {
+  if (m.sys) return el('li', 'sys fresh', `── ${m.text} · ${hm(m.ts)} ──`);
+  const cont = prev && !prev.sys && prev.from === m.from && (m.ts - prev.ts) < 120000;
+  const li = el('li', `m ${m.from === 'me' ? 'mine' : 'theirs'}${cont ? ' cont' : ''} fresh`);
+  if (m.from !== 'me' && !cont) li.appendChild(el('div', 'mname', peerName(m.from)));
+  li.appendChild(el('div', 'mbub', m.text));
+  const meta = el('div', 'mmeta');
+  if (m.from === 'me') { meta.dataset.ts = m.ts; paintMeta(meta, m); }
+  else meta.textContent = hms(m.ts);
+  li.appendChild(meta);
+  return li;
+}
+function renderChat() {
+  msgsEl.textContent = '';
+  const chat = myChat(S.active);
+  if (!chat.length) msgsEl.appendChild(el('li', 'sys', `LINE OPEN · ${hm(Date.now())} — SAY HELLO`));
+  let prev = null;
+  for (const m of chat) { msgsEl.appendChild(msgNode(m, prev)); prev = m; }
+  scrollBottom(true);
+}
+function addMessage(peerId, m) {
+  const chat = myChat(peerId);
+  const prev = chat[chat.length - 1];
+  chat.push(m);
+  if (S.active === peerId) { msgsEl.appendChild(msgNode(m, prev)); scrollBottom(); }
+  renderRoster(); updateTitle();
+}
+function patchStatus(peerId, ts, status) {
+  const chat = S.chats.get(peerId); if (!chat) return;
+  const m = chat.find(x => x.from === 'me' && x.ts === ts);
+  if (!m || m.status === 'delivered') return;
+  m.status = status;
+  if (S.active === peerId) {
+    const meta = msgsEl.querySelector(`.mmeta[data-ts="${ts}"]`);
+    if (meta) paintMeta(meta, m);
+  }
+}
+function updateTitle() {
+  let n = 0; S.peers.forEach(p => n += p.unread || 0);
+  document.title = n ? `(${n}) Switchboard` : 'Switchboard — LAN relay';
+}
+
+function selectPeer(id) {
+  const p = S.peers.get(id); if (!p) return;
+  S.active = id; p.unread = 0;
+  mapView.hidden = true; chatView.hidden = false;
+  map.setHidden(true);
+  renderChatHead(); renderChat(); renderRoster(); updateTitle();
+  taEl.focus();
+}
+function closeSession() {
+  S.active = null;
+  chatView.hidden = true; mapView.hidden = false;
+  map.setHidden(false);
+  renderRoster(); updateTitle();
+}
+ $('#closeBtn').addEventListener('click', closeSession);
+streamEl.addEventListener('click', () => { if (!window.getSelection().toString()) taEl.focus(); });
+
+/* ================= typing ================= */
+function showTyping(id) {
+  if (S.active !== id) return;
+  typingWho.textContent = `${peerName(id)} IS TYPING`;
+  typingRow.classList.add('show');
+  clearTimeout(S.typing.get(id));
+  S.typing.set(id, setTimeout(() => hideTyping(id), 2600));
+}
+function hideTyping(id) { if (S.active === id) typingRow.classList.remove('show'); S.typing.delete(id); }
+function clearTyping(id) {
+  const t = S.typing.get(id);
+  if (t) { clearTimeout(t); S.typing.delete(id); }
+  if (S.active === id) typingRow.classList.remove('show');
+}
+
+/* ================= composer ================= */
+let lastTypingSent = 0;
+function autoSize() { taEl.style.height = 'auto'; taEl.style.height = clamp(taEl.scrollHeight, 42, 132) + 'px'; }
+taEl.addEventListener('input', () => {
+  autoSize();
+  hintCount.textContent = taEl.value.length > 1600 ? `${taEl.value.length}/2000` : '';
+  const now = Date.now();
+  if (S.active && taEl.value && now - lastTypingSent > 1600) { lastTypingSent = now; if (S.transport) S.transport.typing(S.active); }
+});
+taEl.addEventListener('keydown', e => {
+  if (e.isComposing) return;
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+sendBtn.addEventListener('click', send);
+
+function send() {
+  const text = taEl.value.trim();
+  if (!text || !S.active || !S.transport) return;
+  taEl.value = ''; autoSize(); hintCount.textContent = '';
+  const m = { from: 'me', text, ts: Date.now(), status: 'sending' };
+  addMessage(S.active, m);
+  Sfx.send(); map.blip(S.active, 1);
+  if (S.transport.dm(S.active, text, m.ts) === false) failMessage(S.active, m.ts);
+  hideTyping(S.active);
+}
+function failMessage(peerId, ts) {
+  patchStatus(peerId, ts, 'failed');
+  Sfx.fail();
+  const p = S.peers.get(peerId);
+  toast('DELIVERY FAILED', `${p ? p.name + ' · ' + p.ip : 'HOST'} UNREACHABLE`, 'err');
+}
+function retry(ts) {
+  const chat = S.chats.get(S.active); if (!chat) return;
+  const m = chat.find(x => x.from === 'me' && x.ts === ts); if (!m) return;
+  m.status = 'sending'; patchStatus(S.active, ts, 'sending');
+  if (S.transport.dm(S.active, m.text, m.ts) === false) failMessage(S.active, m.ts);
+}
+
+/* ================= incoming message ================= */
+function handleDM(m) {
+  let p = S.peers.get(m.from);
+  if (!p) {
+    p = { id: m.from, name: m.name || 'HOST', ip: m.ip || '?', online: true, lastTs: Date.now(), unread: 0, _ph: Math.random() * 6.28 };
+    S.peers.set(m.from, p);
+    toast('NEW LINE', `${p.name} · ${p.ip}`);
+  }
+  p.online = true; p.lastTs = Date.now(); p.name = m.name || p.name;
+  if (S.active !== m.from) p.unread = (p.unread || 0) + 1;
+  addMessage(m.from, { from: 'them', text: m.text, ts: m.ts });
+  hideTyping(m.from);
+  Sfx.recv(); map.blip(m.from, -1);
+}
+
+/* ================= status bar ================= */
+function renderStatusbar() {
+  const modeEl = $('#sbMode');
+  if (S.mode === 'live') { modeEl.textContent = S.rtt != null ? `WS-LIVE · ${S.rtt} MS` : 'WS-LIVE'; modeEl.className = 'tag live'; }
+  else if (S.mode === 'demo') { modeEl.textContent = 'DEMO · BROADCAST'; modeEl.className = 'tag demo'; }
+  else { modeEl.textContent = 'STANDBY'; modeEl.className = 'tag'; }
+  $('#sbNodes').textContent = `NODES ${[...S.peers.values()].filter(p => p.online).length + (S.me ? 1 : 0)}`;
+  $('#sbIp').textContent = S.me ? `LOCAL ${S.me.ip}` : '';
+}
+const tickClock = () => { $('#sbClock').textContent = new Date().toLocaleTimeString('en-GB'); };
+
+/* ================= network map (canvas) ================= */
+class NetMap {
+  constructor(canvas, onSelect) {
+    this.cv = canvas; this.ctx = canvas.getContext('2d');
+    this.onSelect = onSelect;
+    this.me = null; this.peers = []; this.nodes = []; this.packets = [];
+    this.hover = null; this.hidden = true; this.t = 0; this.last = 0; this.pts = [];
+    new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
+    canvas.addEventListener('mousemove', e => this.pick(e.offsetX, e.offsetY, true));
+    canvas.addEventListener('mouseleave', () => { this.hover = null; canvas.style.cursor = 'default'; });
+    canvas.addEventListener('click', () => { if (this.hover) this.onSelect(this.hover); });
+    requestAnimationFrame(ts => this.loop(ts));
+  }
+  resize() {
+    const r = this.cv.parentElement.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.w = r.width; this.h = r.height;
+    this.cv.width = Math.round(r.width * dpr); this.cv.height = Math.round(r.height * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.layout();
+  }
+  sync() {
+    this.peers = [...S.peers.values()];   // insertion order = stable node positions
+    this.me = S.me;
+    this.layout();
+  }
+  layout() {
+    if (!this.w) return;
+    this.cx = this.w / 2; this.cy = this.h / 2 + 6;
+    const n = this.peers.length;
+    this.R = clamp(Math.min(this.w, this.h) / 2 - 96, 90, 320);
+    this.nodes = this.peers.map((p, i) => {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(n, 1);
+      return { id: p.id, x: this.cx + Math.cos(a) * this.R, y: this.cy + Math.sin(a) * this.R, ph: p._ph || 0, p };
+    });
+    const ids = new Set(this.nodes.map(nd => nd.id));
+    this.packets = this.packets.filter(pk => ids.has(pk.id));
+  }
+  blip(id, dir) {
+    if (!this.nodes.some(nd => nd.id === id)) return;
+    this.packets.push({ id, dir, t: 0, sp: .8 + Math.random() * .5 });
+  }
+  setHidden(v) { this.hidden = v; }
+  loop(ts) {
+    const dt = Math.min((ts - this.last) / 1000, .05); this.last = ts;
+    if (!this.hidden && this.w) { this.t += dt; this.draw(dt); }
+    requestAnimationFrame(t2 => this.loop(t2));
+  }
+  draw(dt) {
+    const c = this.ctx;
+    c.clearRect(0, 0, this.w, this.h);
+    // dotted orbit rings
+    c.strokeStyle = 'rgba(27,24,19,.14)'; c.setLineDash([2, 7]); c.lineWidth = 1;
+    c.beginPath(); c.arc(this.cx, this.cy, this.R, 0, 6.2832); c.stroke();
+    c.beginPath(); c.arc(this.cx, this.cy, this.R * .55, 0, 6.2832); c.stroke();
+    c.setLineDash([]);
+    // sonar while the board is empty
+    if (!this.nodes.length) {
+      const k = (this.t % 2.2) / 2.2;
+      c.strokeStyle = `rgba(29,154,85,${.5 * (1 - k)})`;
+      c.beginPath(); c.arc(this.cx, this.cy, 20 + k * Math.min(this.R * 1.2, 260), 0, 6.2832); c.stroke();
+    }
+    const wob = nd => ({ x: nd.x + Math.sin(this.t * .7 + nd.ph) * 3, y: nd.y + Math.cos(this.t * .55 + nd.ph) * 3 });
+    const m = { x: this.cx + Math.sin(this.t * .5) * 2, y: this.cy + Math.cos(this.t * .4) * 2 };
+    // edges
+    for (const nd of this.nodes) {
+      const q = wob(nd);
+      c.strokeStyle = nd.p.online ? 'rgba(27,24,19,.34)' : 'rgba(27,24,19,.12)';
+      if (!nd.p.online) c.setLineDash([3, 5]);
+      c.beginPath(); c.moveTo(m.x, m.y); c.lineTo(q.x, q.y); c.stroke();
+      c.setLineDash([]);
+    }
+    // packets
+    for (let i = this.packets.length - 1; i >= 0; i--) {
+      const pk = this.packets[i];
+      const nd = this.nodes.find(x => x.id === pk.id);
+      if (!nd) { this.packets.splice(i, 1); continue; }
+      const q = wob(nd);
+      pk.t += pk.sp * dt;
+      const f = clamp(pk.dir > 0 ? pk.t : 1 - pk.t, 0, 1);
+      const x = m.x + (q.x - m.x) * f, y = m.y + (q.y - m.y) * f;
+      const f2 = clamp(f - pk.dir * .07, 0, 1);
+      c.fillStyle = 'rgba(29,154,85,.35)';
+      c.fillRect(m.x + (q.x - m.x) * f2 - 2, m.y + (q.y - m.y) * f2 - 2, 4, 4);
+      c.fillStyle = '#1D9A55';
+      c.fillRect(x - 2.5, y - 2.5, 5, 5);
+      if (pk.t >= 1) this.packets.splice(i, 1);
+    }
+    // ambient chatter
+    const online = this.nodes.filter(nd => nd.p.online);
+    if (online.length && Math.random() < dt * .5)
+      this.blip(online[Math.floor(Math.random() * online.length)].id, Math.random() < .5 ? 1 : -1);
+    // peer nodes
+    c.textAlign = 'center';
+    this.pts = [];
+    for (const nd of this.nodes) {
+      const q = wob(nd);
+      this.pts.push({ id: nd.id, x: q.x, y: q.y });
+      const hov = this.hover === nd.id;
+      if (nd.p.online) { c.fillStyle = hov ? '#136B3C' : '#1D9A55'; c.fillRect(q.x - 5, q.y - 5, 10, 10); }
+      else { c.strokeStyle = '#B26B14'; c.lineWidth = 1.4; c.strokeRect(q.x - 5, q.y - 5, 10, 10); }
+      if (hov) { c.strokeStyle = '#1B1813'; c.lineWidth = 1.2; c.strokeRect(q.x - 10, q.y - 10, 20, 20); }
+      if (nd.p.unread) {
+        c.fillStyle = '#1B1813'; c.fillRect(q.x + 6, q.y - 15, 15, 13);
+        c.fillStyle = '#F2EFE6'; c.font = '700 9px "IBM Plex Mono", monospace'; c.textBaseline = 'middle';
+        c.fillText(nd.p.unread > 9 ? '9+' : String(nd.p.unread), q.x + 13.5, q.y - 8);
+        c.textBaseline = 'alphabetic';
+      }
+      c.fillStyle = '#1B1813'; c.font = '600 10.5px "IBM Plex Mono", monospace';
+      c.fillText(nd.p.name, q.x, q.y - (nd.p.unread ? 21 : 16));
+      c.fillStyle = '#8D8778'; c.font = '9.5px "IBM Plex Mono", monospace';
+      c.fillText(nd.p.ip, q.x, q.y + 22);
+    }
+    // my node
+    if (this.me) {
+      c.fillStyle = '#1B1813'; c.fillRect(m.x - 7, m.y - 7, 14, 14);
+      c.fillStyle = '#1D9A55'; c.fillRect(m.x - 2.5, m.y - 2.5, 5, 5);
+      c.fillStyle = '#1B1813'; c.font = '600 10.5px "IBM Plex Mono", monospace';
+      c.fillText('YOU · ' + this.me.name, m.x, m.y - 18);
+      c.fillStyle = '#8D8778'; c.font = '9.5px "IBM Plex Mono", monospace';
+      c.fillText(this.me.ip, m.x, m.y + 26);
+    }
+  }
+  pick(x, y, set) {
+    let hit = null;
+    for (const p of this.pts) if (Math.abs(p.x - x) < 14 && Math.abs(p.y - y) < 14) hit = p.id;
+    if (set) { this.hover = hit; this.cv.style.cursor = hit ? 'pointer' : 'default'; }
+    return hit;
+  }
+}
+const map = new NetMap($('#netmap'), id => selectPeer(id));
+
+/* ================= transport: LAN (WebSocket) ================= */
+function LiveTransport(url, h) {
+  let ws = null, ping = null, closed = false;
+  const send = o => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+  this.start = () => {
+    ws = new WebSocket(url);
+    const guard = setTimeout(() => {
+      if (!ws || ws.readyState !== 1) { this.stop(); h.error('TIMEOUT'); }
+    }, 3500);
+    ws.onopen = () => {
+      clearTimeout(guard);
+      send({ type: 'hello', name: store.name || ('MACHINE-' + (10 + Math.floor(Math.random() * 90))) });
+      ping = setInterval(() => send({ type: 'ping', t: Date.now() }), 4000);
+    };
+    ws.onmessage = e => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      switch (m.type) {
+        case 'welcome': h.ready({ id: m.id, name: m.name, ip: m.ip }, m.peers || [], m.boot); break;
+        case 'peers':   h.peers(m.peers); break;
+        case 'msg':     h.dm({ from: m.from, name: m.name, ip: m.ip, text: m.text, ts: m.ts }); break;
+        case 'ack':     h.ack(m.to, m.ts); break;
+        case 'fail':    h.fail(m.to, m.ts); break;
+        case 'typing':  h.typing(m.from); break;
+        case 'pong':    h.rtt(Date.now() - m.t); break;
+      }
+    };
+    ws.onclose = () => { if (closed) return; clearInterval(ping); h.down(); };
+    ws.onerror = () => {};
+  };
+  this.dm = (to, text, ts) => { if (!ws || ws.readyState !== 1) return false; send({ type: 'msg', to, text, ts }); return true; };
+  this.typing = to => send({ type: 'typing', to });
+  this.rename = name => { store.name = name; send({ type: 'rename', name }); };
+  this.stop = () => { closed = true; clearInterval(ping); try { ws && ws.close(); } catch {} };
+}
+
+/* ================= transport: demo (tabs as machines) ================= */
+function DemoTransport(h) {
+  const CH = 'switchboard-v1', KEY = '__sb_bus';
+  const bc = ('BroadcastChannel' in window) ? new BroadcastChannel(CH) : null;
+  const seen = new Set();
+  let hb = null, pruner = null;
+  const ss = {
+    get k() { try { return sessionStorage.getItem; } catch { return null; } }
+  };
+  const ssGet = k => { try { return sessionStorage.getItem(k); } catch { return null; } };
+  const ssSet = (k, v) => { try { sessionStorage.setItem(k, v); } catch {} };
+  let me = (() => {
+    let id = ssGet('sb_id'), ip = ssGet('sb_ip');
+    if (!id) {
+      id = 'd' + uid();
+      ip = `192.168.${1 + Math.floor(Math.random() * 3)}.${2 + Math.floor(Math.random() * 250)}`;
+      ssSet('sb_id', id); ssSet('sb_ip', ip);
+    }
+    const name = ssGet('sb_name') || `MACHINE-${ip.split('.').pop()}`;
+    return { id, ip, name };
+  })();
+  this.me = me;
+
+  function post(obj) {
+    obj._id = uid(); obj._src = me.id;
+    if (bc) try { bc.postMessage(obj); } catch {}
+    try { localStorage.setItem(KEY, JSON.stringify(obj)); } catch {}   // storage-event fallback
+  }
+  function recv(m) {
+    if (!m || m._src === me.id) return;
+    if (seen.has(m._id)) return;
+    seen.add(m._id); if (seen.size > 800) seen.clear();
+    switch (m.type) {
+      case 'ann': upsertPeer({ id: m._src, name: m.name, ip: m.ip }); h.peersChanged(); break;
+      case 'bye': dropPeer(m._src, 'left'); break;
+      case 'dm':
+        if (m.to !== me.id) return;
+        upsertPeer({ id: m._src, name: m.name, ip: m.ip }, { quiet: true });
+        h.dm({ from: m._src, name: m.name, ip: m.ip, text: m.text, ts: m.ts });
+        post({ type: 'ack', to: m._src, ts: m.ts });
+        break;
+      case 'ack': if (m.to === me.id) h.ack(m.to, m.ts); break;
+      case 'typing': if (m.to === me.id) h.typing(m._src); break;
+    }
+  }
+  if (bc) bc.onmessage = e => recv(e.data);
+  window.addEventListener('storage', e => {
+    if (e.key === KEY && e.newValue) { try { recv(JSON.parse(e.newValue)); } catch {} }
+  });
+  window.addEventListener('beforeunload', () => post({ type: 'bye' }));
+
+  this.start = () => {
+    post({ type: 'ann', name: me.name, ip: me.ip });
+    hb = setInterval(() => post({ type: 'ann', name: me.name, ip: me.ip }), 2200);
+    pruner = setInterval(() => {
+      const now = Date.now();
+      S.peers.forEach(p => { if (p.online && now - p.lastTs > 6500) dropPeer(p.id, 'timeout'); });
+    }, 1200);
+  };
+  this.dm = (to, text, ts) => {
+    const p = S.peers.get(to);
+    if (!p || !p.online) return false;
+    post({ type: 'dm', to, name: me.name, ip: me.ip, text, ts });
+    return true;
+  };
+  this.typing = to => { const p = S.peers.get(to); if (p && p.online) post({ type: 'typing', to }); };
+  this.rename = name => { me.name = name; ssSet('sb_name', name); post({ type: 'ann', name, ip: me.ip }); };
+  this.stop = () => { clearInterval(hb); clearInterval(pruner); if (bc) bc.close(); };
+}
+
+/* ================= app-level handlers ================= */
+function linkDown() {
+  S.rtt = null; S.mode = null;
+  S.peers.forEach(p => { p.online = false; clearTyping(p.id); });
+  if (S.active) {
+    const chat = S.chats.get(S.active);
+    if (chat && chat.some(m => !m.sys)) addMessage(S.active, sysMsg('TRANSPORT DROPPED — LINK TO RELAY LOST'));
+    renderChatHead();
+  }
+  renderRoster(); renderStatusbar(); renderMe();
+  toast('LINK DOWN', 'TRANSPORT DISCONNECTED', 'err');
+  boot.el.classList.remove('gone');
+  boot.head.textContent = 'LINK LOST';
+  boot.fail('THE SERVER DROPPED THE CONNECTION');
+}
+
+const H = {
+  ready(me, peers, bootId) {
+    // server restarted or new identity → reset the board
+    if (S.bootId && (S.bootId !== bootId || (S.me && S.me.id !== me.id))) {
+      S.peers.clear(); S.chats.clear();
+      S.active = null;
+      chatView.hidden = true; mapView.hidden = false; map.setHidden(false);
+    }
+    S.bootId = bootId;
+    S.mode = 'live'; S.me = me; S.rtt = null;
+    if (!store.name) store.name = me.name;
+    peers.forEach(p => { if (p.id !== me.id) upsertPeer(p, { quiet: true }); });
+    renderMe(); renderRoster(); renderStatusbar(); updateTitle();
+    boot.done('LINK ESTABLISHED · ' + (boot._url || 'RELAY'));
+    toast('LINK ESTABLISHED', `${me.ip} VIA RELAY`);
+  },
+  peers(list) {
+    const news = [];
+    (list || []).forEach(p => {
+      if (S.me && p.id === S.me.id) return;
+      if (upsertPeer(p) !== 'upd') news.push(p.id);
+    });
+    const ids = new Set((list || []).map(p => p.id));
+    S.peers.forEach((p, id) => { if (p.online && !ids.has(id)) dropPeer(id, 'left'); });
+    renderRoster();
+    if (S.active) renderChatHead();
+    news.forEach(id => map.blip(id, -1));
+  },
+  dm: handleDM,
+  ack: (to, ts) => patchStatus(to, ts, 'delivered'),
+  fail: (to, ts) => failMessage(to, ts),
+  typing: id => showTyping(id),
+  rtt: ms => { S.rtt = ms; renderStatusbar(); },
+  error: () => boot.fail('UNREACHABLE — CHECK ADDRESS / FIREWALL'),
+  down: () => linkDown(),
+  peersChanged: () => renderRoster(),
+};
+
+/* ================= boot sequence ================= */
+const boot = {
+  el: $('#boot'), status: $('#bootStatus'), choose: $('#bootChoose'),
+  addr: $('#addrInput'), head: $('#bootHead'), btnRe: $('#btnReconnect'),
+  _url: null, lastUrl: null,
+  begin() {
+    const http = location.protocol === 'http:' || location.protocol === 'https:';
+    let url = null;
+    if (http && location.host) url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+    else if (store.addr) url = store.addr;
+    if (url) this.connect(url);
+    else { this.status.textContent = 'NO TRANSPORT CONFIGURED'; this.choose.hidden = false; this.btnRe.hidden = true; }
+  },
+  connect(url) {
+    this._url = url; this.lastUrl = url;
+    store.addr = url;
+    this.choose.hidden = true;
+    this.head.textContent = 'SWITCHBOARD';
+    this.status.textContent = `PROBING ${url} …`;
+    S.transport = new LiveTransport(url, H);
+    S.transport.start();
+  },
+  fail(msg) {
+    this.status.textContent = msg;
+    this.choose.hidden = false;
+    this.btnRe.hidden = !this.lastUrl;
+    if (this.lastUrl) this.btnRe.textContent = 'RECONNECT — ' + this.lastUrl;
+  },
+  done(msg) {
+    this.status.textContent = msg;
+    setTimeout(() => this.el.classList.add('gone'), 500);
+  },
+};
+ $('#btnDemo').addEventListener('click', () => {
+  const t = new DemoTransport(H);
+  S.transport = t; S.mode = 'demo';
+  S.me = { id: t.me.id, name: t.me.name, ip: t.me.ip };
+  renderMe(); renderRoster(); renderStatusbar();
+  boot.done('DEMO TRANSPORT ONLINE — TABS ACT AS MACHINES');
+  toast('DEMO MODE', 'EACH TAB OF THIS PAGE IS A SEPARATE MACHINE', 'warn');
+  t.start();
+});
+ $('#btnConnect').addEventListener('click', () => {
+  const v = boot.addr.value.trim().replace(/^wss?:\/\//, '');
+  if (!v) { boot.addr.classList.add('shake'); setTimeout(() => boot.addr.classList.remove('shake'), 400); return; }
+  boot.connect('ws://' + v);
+});
+boot.addr.addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnConnect').click(); });
+boot.btnRe.addEventListener('click', () => boot.connect(boot.lastUrl));
+
+/* ================= init ================= */
+renderSound();
+renderRoster();
+renderMe();
+tickClock(); setInterval(tickClock, 1000);
+updateTitle();
+map.sync();
+map.setHidden(false);
+boot.begin();
+
+})();
+</script>
+</body>
+</html>
