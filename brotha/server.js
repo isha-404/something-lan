@@ -74,7 +74,7 @@ setInterval(() => {
   }
 }, 30000);
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log('\n  Switchboard relay listening');
   console.log(`  On this machine : http://localhost:${PORT}`);
   console.log(`  On the LAN      : http://<this-machine-ip>:${PORT}\n`);
